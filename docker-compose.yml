@@ -1,0 +1,129 @@
+version: "3.8"
+
+# Define default configuration for Digestiflow.
+x-digestiflow: &default-digestiflow
+  image: ghcr.io/bihealth/digestiflow-server:${DIGESTIFLOW_SERVER_VERSION}
+  environment: &default-digestiflow-environment
+    WAIT_HOSTS: "postgres:5432, redis:6379"
+    LC_ALL: en_US.UTF-8
+    DJANGO_DEBUG: "${DJANGO_DEBUG}"
+    DATABASE_URL: "${DATABASE_URL}"
+    DJANGO_SETTINGS_MODULE: "${DJANGO_SETTINGS_MODULE}"
+    DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY}"
+    EMAIL_SENDER: "${EMAIL_SENDER}"
+    EMAIL_URL: "${EMAIL_URL}"
+    EMAIL_SUBJECT_PREFIX: "${EMAIL_SUBJECT_PREFIX}"
+    ENABLE_LDAP: "${ENABLE_LDAP}"
+    AUTH_LDAP_SERVER_URI: "${AUTH_LDAP_SERVER_URI}"
+    AUTH_LDAP_BIND_PASSWORD: "${AUTH_LDAP_BIND_PASSWORD}"
+    AUTH_LDAP_BIND_DN: "${AUTH_LDAP_BIND_DN}"
+    AUTH_LDAP_USER_SEARCH_BASE: "${AUTH_LDAP_USER_SEARCH_BASE}"
+    AUTH_LDAP_USERNAME_DOMAIN: "${AUTH_LDAP_USERNAME_DOMAIN}"
+    AUTH_LDAP_DOMAIN_PRINTABLE: "${AUTH_LDAP_DOMAIN_PRINTABLE}"
+    ENABLE_LDAP_SECONDARY: "${ENABLE_LDAP_SECONDARY}"
+    AUTH_LDAP2_SERVER_URI: "${AUTH_LDAP2_SERVER_URI}"
+    AUTH_LDAP2_BIND_PASSWORD: "${AUTH_LDAP2_BIND_PASSWORD}"
+    AUTH_LDAP2_BIND_DN: "${AUTH_LDAP2_BIND_DN}"
+    AUTH_LDAP2_USER_SEARCH_BASE: "${AUTH_LDAP2_USER_SEARCH_BASE}"
+    AUTH_LDAP2_USERNAME_DOMAIN: "${AUTH_LDAP2_USERNAME_DOMAIN}"
+    AUTH_LDAP2_DOMAIN_PRINTABLE: "${AUTH_LDAP2_DOMAIN_PRINTABLE}"
+    PROJECTROLES_SEND_EMAIL: "${PROJECTROLES_SEND_EMAIL}"
+    PROJECTROLES_SITE_MODE: "${PROJECTROLES_SITE_MODE}"
+    PROJECTROLES_TARGET_CREATE: "${PROJECTROLES_TARGET_CREATE}"
+    PROJECTROLES_ADMIN_OWNER: "${PROJECTROLES_ADMIN_OWNER}"
+    CELERY_BROKER_URL: "${CELERY_BROKER_URL}"
+  networks:
+    - digestiflow
+  restart: unless-stopped
+
+services:
+  traefik:
+    image: traefik:v2.3.1
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - digestiflow
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+    volumes:
+      - type: bind
+        source: ./volumes/traefik/letsencrypt
+        target: /letsencrypt
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+
+  digestiflow-web:
+    <<: *default-digestiflow
+    networks:
+      - digestiflow
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.xforward.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.digestiflow-web.entrypoints=web,websecure"
+      - "traefik.http.routers.digestiflow-web.middlewares=xforward"
+      - "traefik.http.routers.digestiflow-web.rule=HostRegexp(`{catchall:.+}`)"
+      - "traefik.http.services.digestiflow-web.loadbalancer.server.port=8080"
+      - "traefik.http.routers.digestiflow-web.tls=true"
+
+  digestiflow-celerybeat:
+    <<: *default-digestiflow
+    command: ["celerybeat"]
+    networks:
+      - digestiflow
+    depends_on:
+      - digestiflow-web
+    restart: unless-stopped
+
+  digestiflow-celeryd-default:
+    <<: *default-digestiflow
+    command: ["celeryd"]
+    environment:
+      <<: *default-digestiflow-environment
+      CELERY_QUEUES: default
+      CELERY_WORKERS: 16
+    depends_on:
+      - digestiflow-web
+    networks:
+      - digestiflow
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:11
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - digestiflow
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ./volumes/postgres/data
+        target: /var/lib/postgresql/data
+
+  redis:
+    image: redis:6
+    networks:
+      - digestiflow
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: ./volumes/redis/data
+        target: /data
+
+networks:
+  digestiflow:
