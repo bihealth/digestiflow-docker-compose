@@ -46,7 +46,7 @@ Use the provided `init.sh` script for creating the required volumes (directories
 ```bash
 $ bash init.sh
 $ ls volumes/
-postgres  irods  redis  traefik
+postgres  redis  traefik
 ```
 
 Then copy the example configuration to `.env` and adjust it.
