@@ -32,6 +32,7 @@ x-digestiflow: &default-digestiflow
     PROJECTROLES_TARGET_CREATE: "${PROJECTROLES_TARGET_CREATE}"
     PROJECTROLES_ADMIN_OWNER: "${PROJECTROLES_ADMIN_OWNER}"
     CELERY_BROKER_URL: "${CELERY_BROKER_URL}"
+    FILEBOXES_ENABLED: "${FILEBOXES_ENABLED}"
   networks:
     - digestiflow
   restart: unless-stopped
