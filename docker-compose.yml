@@ -2,7 +2,7 @@ version: "3.8"
 
 # Define default configuration for Digestiflow.
 x-digestiflow: &default-digestiflow
-  image: ghcr.io/bihealth/digestiflow-server:0.3.3-0
+  image: ghcr.io/bihealth/digestiflow-server:0.3.4-0
   environment: &default-digestiflow-environment
     WAIT_HOSTS: "postgres:5432, redis:6379"
     LC_ALL: en_US.UTF-8
